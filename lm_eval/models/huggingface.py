@@ -8,6 +8,9 @@ import torch
 from itertools import chain
 from datasets import load_dataset
 import torch.nn.functional as F
+
+import babylm.models  # HACK: not sure how to register my models otherwise
+
 import transformers
 from accelerate import (
     Accelerator,
@@ -156,7 +159,7 @@ class HFLM(TemplateLM):
                     trust_remote_code=trust_remote_code,
                     use_fast=use_fast_tokenizer,
                 )
-            
+
             if image_processor:
                 assert isinstance(
                     image_processor, transformers.ProcessorMixin
@@ -169,7 +172,7 @@ class HFLM(TemplateLM):
                     revision=revision,
                     trust_remote_code=trust_remote_code
                 )
-                
+
 
         else:
             assert isinstance(device, str)
@@ -716,7 +719,7 @@ class HFLM(TemplateLM):
                 use_fast=use_fast_tokenizer,
             )
         return None
-    
+
     def _create_image_processor(
         self,
         pretrained: Union[str, transformers.PreTrainedModel],
@@ -1039,7 +1042,7 @@ class HFLM(TemplateLM):
     ) -> List[Tuple[float, bool]]:
         assert self.AUTO_MODEL_CLASS != transformers.AutoModelForMaskedLM, \
             "Used `--model hf-mlm` when model doesn't have an AutoModelForMaskedLM implementation!"
-        
+
         # TODO: implement some kind of efficient-request-middleware that lumps together requests with the same context
         res = []
 
@@ -1183,7 +1186,7 @@ class HFLM(TemplateLM):
                 inps.append(inp)  # [1, inp_length]
                 cont_toks_list.append(continuation_enc)
                 inplens.append(inplen)
-                
+
 
             # create encoder attn mask and batched conts, if seq2seq
             call_kwargs = {}
@@ -1422,7 +1425,7 @@ class AutoMaskedLM(HFLM):
     """Masked language modeling.
     You can find a set of supported models in the following documentation:
     https://huggingface.co/docs/transformers/main/model_doc/auto#transformers.AutoModelForMaskedLM
-    
+
     Much of the code in this class is adapted from minicons, by Kanishka Misra:
     https://github.com/kanishkamisra/minicons
     which is itself adapted from the code of Salazar et al. (2020):
@@ -1456,7 +1459,7 @@ class AutoMaskedLM(HFLM):
         :type manual_special: bool
         :param return_tensors: returned tensor format. Default `'pt'`
         :type manual_special: str
-        :return: Encoded batch 
+        :return: Encoded batch
         :rtype: ``Dict``
         """
         sentences = [text] if isinstance(text, str) else text
@@ -1471,7 +1474,7 @@ class AutoMaskedLM(HFLM):
             tokens = self.tokenizer.batch_encode_plus(sentences, padding = 'longest', return_attention_mask = True)
 
         return tokens
-    
+
     def _prepare_text(self, text):
         sentences = [text] if isinstance(text, str) else list(text) if isinstance(text, tuple) else text
         encoded = self.encode(sentences, manual_special = False)
@@ -1485,7 +1488,7 @@ class AutoMaskedLM(HFLM):
             token_ids = torch.tensor(token_ids)
             # final_lengths = len(token_ids) - 2
             attention_mask = torch.tensor(attention_mask)
-            
+
             token_ids_masked_list = []
             attention_masked_list = []
 
@@ -1504,11 +1507,11 @@ class AutoMaskedLM(HFLM):
                 token_ids_masked = token_ids.clone()
                 token_ids_masked[mask_set] = mask_token_id
                 attention_masked = attention_mask.clone()
-                
+
                 attention_masked_list.append(attention_masked)
                 token_ids_masked_list.append(token_ids_masked)
             masked_tensors.append((torch.stack(token_ids_masked_list), torch.stack(attention_masked_list), effective_token_ids, len(mask_indices), 1))
-        
+
         return masked_tensors
 
     def loglikelihood(self, requests, disable_tqdm=False):
@@ -1530,7 +1533,7 @@ class AutoMaskedLM(HFLM):
             return -len(toks), req[0]
 
         scores = []
-                
+
         re_ords = Collator(
             [reg.args for reg in requests],
             sort_fn=_collate,
@@ -1578,7 +1581,7 @@ class AutoMaskedLM(HFLM):
             token_ids = token_ids.to(self.device)
             attention_masks = attention_masks.to(self.device)
             effective_token_ids = torch.cat([torch.tensor(x) for x in effective_token_ids])
-            
+
             indices = list(chain.from_iterable([list(range(o,o+n)) for n, o in zip(lengths, offsets)]))
 
             with torch.no_grad():
@@ -1591,7 +1594,7 @@ class AutoMaskedLM(HFLM):
 
             batch_scores = logprob_distribution[torch.arange(sum(lengths)), effective_token_ids].type(torch.DoubleTensor).split(lengths)
             batch_scores = [(float(s.sum()), False) for s in batch_scores]
-            
+
             scores.extend(batch_scores)
             pbar.update(len(chunk))
         pbar.close()
