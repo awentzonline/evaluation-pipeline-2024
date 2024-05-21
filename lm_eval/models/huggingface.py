@@ -9,7 +9,7 @@ from itertools import chain
 from datasets import load_dataset
 import torch.nn.functional as F
 
-import babylm.models  # HACK: not sure how to register my models otherwise
+import mup
 
 import transformers
 from accelerate import (
@@ -253,6 +253,11 @@ class HFLM(TemplateLM):
         if isinstance(self.model, torch.nn.Module):
             self.model.eval()
             self.model.tie_weights()
+
+        if hasattr(self.model, 'mup_base_shapes'):
+            base_kwargs = delta_kwargs = dict(num_hidden_layers=self.model.config.num_hidden_layers)
+            base_shapes = self.model.mup_base_shapes(base_kwargs=base_kwargs, delta_kwargs=delta_kwargs)
+            mup.set_base_shapes(self.model, base_shapes)
 
         if isinstance(pretrained, str) and (gpus >= 1 or str(self.device) == "mps"):
             # TODO: can remove this whole snippet except in the mps case, perhaps?
